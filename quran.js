@@ -18,6 +18,18 @@ let index = 0;
 let installBtn = document.getElementById('installBtn');
 let deferredPrompt;
 
+// Add error handling and loading states
+function showError(element, message) {
+  element.innerHTML = `<div class="error-message" style="color: #ef4444; padding: 20px; text-align: center; font-weight: 600;">${message}</div>`;
+}
+
+function showLoading(element, message = 'جاري التحميل...') {
+  element.innerHTML = `<div class="loading" style="padding: 40px; text-align: center; font-weight: 600;">${message}</div>`;
+}
+
+function hideLoading(element) {
+  element.classList.remove('loading');
+}
 
 menu.addEventListener("click", () => {
   ul.classList.add("active");
@@ -78,24 +90,27 @@ window.addEventListener('appinstalled', () => {
   console.log('PWA was installed');
 });
 
-// Add loading state for surahs
-function showSurahsLoading() {
-  tafseerContent.innerHTML = '<div class="loading" style="text-align: center; padding: 50px; font-size: 20px;">جاري تحميل السور...</div>';
-}
-
 // Show loading initially
-showSurahsLoading();
+showLoading(tafseerContent, 'جاري تحميل السور...');
 
 fetch("https://api.alquran.cloud/v1/meta")
   .then((result) => {
-    let data = result.json();
-    return data;
+    if (!result.ok) {
+      throw new Error(`HTTP error! status: ${result.status}`);
+    }
+    return result.json();
   })
   .then((data) => {
     // Clear loading
-    tafseerContent.innerHTML = '';
+    hideLoading(tafseerContent);
+    
+    if (!data.data || !data.data.surahs || !data.data.surahs.references) {
+      throw new Error('لا توجد بيانات متاحة');
+    }
     
     let dataRef = data.data.surahs.references;
+    tafseerContent.innerHTML = '';
+    
     for (let i = 0; i < data.data.surahs.references.length; i++) {
       let mainDiv = document.createElement("div");
       mainDiv.classList.add("main-div-tafseer");
@@ -121,6 +136,7 @@ fetch("https://api.alquran.cloud/v1/meta")
       mainDiv.appendChild(secondDiv);
       mainDiv.appendChild(dataRef);
       tafseerContent.appendChild(mainDiv);
+      
       mainDiv.addEventListener("click", () => {
         contentTafseer.classList.add("left");
       });
@@ -129,14 +145,12 @@ fetch("https://api.alquran.cloud/v1/meta")
       });
 
       newArr.push(mainDiv);
-      // console.log(newArr[0])
+      
       mainDiv.addEventListener("click", (e) => {
-        // targets(mainDiv)
         tafseerContent.classList.add("remove");
         if (e.target.parentElement.classList.contains("tafseer-content")) {
           heading.innerHTML = e.target.children[0].innerHTML;
           ayat.innerHTML = `عدد الأيات : ( ${dataRef.innerHTML} )`;
-          // console.log(newArr.indexOf(e.target))
           targets(newArr.indexOf(e.target));
           number(newArr.indexOf(e.target));
         } else if (
@@ -149,23 +163,28 @@ fetch("https://api.alquran.cloud/v1/meta")
         }
       });
     }
-  });
+  })
   .catch((error) => {
     console.error('Error loading Quran meta:', error);
-    tafseerContent.innerHTML = '<div style="text-align: center; padding: 50px; color: red;">حدث خطأ في تحميل البيانات</div>';
+    showError(tafseerContent, 'حدث خطأ في تحميل البيانات. يرجى المحاولة مرة أخرى.');
   });
   
 function targets(target) {
-  // Show loading for audio
-  audio.innerHTML = '<div class="loading">جاري تحميل الصوت...</div>';
+  showLoading(audio, 'جاري تحميل الصوت...');
   
   fetch(`https://quran-endpoint.vercel.app/quran`)
     .then((result) => {
-      let data = result.json();
-      return data;
+      if (!result.ok) {
+        throw new Error(`HTTP error! status: ${result.status}`);
+      }
+      return result.json();
     })
     .then((data) => {
-      let url = data.data[target].recitation.full;
+      if (!data.data || !data.data[target] || !data.data[target].recitation) {
+        throw new Error('لا توجد بيانات صوتية متاحة');
+      }
+      
+      const url = data.data[target].recitation.full;
       audio.innerHTML = `
         <audio src="${url.replace("http", "https")}" controls preload="metadata">
           متصفحك لا يدعم تشغيل الصوت
@@ -174,7 +193,7 @@ function targets(target) {
     })
     .catch((error) => {
       console.error('Error loading audio:', error);
-      audio.innerHTML = '<div style="color: red;">حدث خطأ في تحميل الصوت</div>';
+      showError(audio, 'حدث خطأ في تحميل الصوت');
     });
 }
 
@@ -186,33 +205,37 @@ closeBtn.addEventListener("click", () => {
 function number(tar) {
   tar++;
   
-  // Show loading for verses
-  tbodyAyat.innerHTML = '<div class="loading">جاري تحميل الآيات...</div>';
+  showLoading(tbodyAyat, 'جاري تحميل الآيات...');
   
   fetch(`https://api.alquran.cloud/v1/surah/${tar}`)
     .then((result) => {
-      let data = result.json();
-      return data;
+      if (!result.ok) {
+        throw new Error(`HTTP error! status: ${result.status}`);
+      }
+      return result.json();
     })
     .then((data) => {
-      // Clear loading
-      tbodyAyat.innerHTML = '';
+      if (!data.data || !data.data.ayahs) {
+        throw new Error('لا توجد آيات متاحة');
+      }
       
+      tbodyAyat.innerHTML = '';
       for (let i = 0; i < data.data.ayahs.length; i++) {
-        let j = i;
+        const ayahNumber = i + 1;
         tbodyAyat.innerHTML += `
           <span class="contentayat">${
             data.data.ayahs[i].text
-          }<span class="number">{${++j}}</span></span>
+          }<span class="number">{${ayahNumber}}</span></span>
         `;
+      }
+      
         closeBtn.addEventListener("click", () => {
           tbodyAyat.innerHTML = "";
         });
-      }
     })
     .catch((error) => {
       console.error('Error loading verses:', error);
-      tbodyAyat.innerHTML = '<div style="color: red;">حدث خطأ في تحميل الآيات</div>';
+      showError(tbodyAyat, 'حدث خطأ في تحميل الآيات');
     });
 }
 
@@ -222,3 +245,38 @@ document.querySelectorAll('.nav a').forEach(link => {
     link.classList.add('active');
   }
 });
+
+// Add keyboard navigation for closing modal
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    if (contentTafseer.classList.contains('left')) {
+      closeBtn.click();
+    }
+  }
+});
+
+// Add click outside to close modal
+contentTafseer.addEventListener('click', function(e) {
+  if (e.target === contentTafseer) {
+    closeBtn.click();
+  }
+});
+
+// Prevent modal content clicks from closing modal
+document.querySelector('.closebtn').addEventListener('click', function(e) {
+  e.stopPropagation();
+});
+
+// Add loading animation for better UX
+function addLoadingAnimation() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .loading-spinner {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  `;
+  document.head.appendChild(style);
+}
+
+addLoadingAnimation();

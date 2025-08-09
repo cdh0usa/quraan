@@ -9,6 +9,19 @@ let index = 0;
 let installBtn = document.getElementById('installBtn');
 let deferredPrompt;
 
+// Add error handling and loading states
+function showError(element, message) {
+  element.innerHTML = `<div class="error-message" style="color: #ef4444; padding: 20px; text-align: center; font-weight: 600;">${message}</div>`;
+}
+
+function showLoading(element, message = 'جاري التحميل...') {
+  element.innerHTML = `<div class="loading" style="padding: 40px; text-align: center; font-weight: 600;">${message}</div>`;
+}
+
+function hideLoading(element) {
+  element.classList.remove('loading');
+}
+
 menu.addEventListener("click", () => {
   ul.classList.add("active");
 });
@@ -53,61 +66,65 @@ window.addEventListener('appinstalled', () => {
   console.log('PWA was installed');
 });
 
-// Add loading state
-function showLoading() {
-  document.querySelector(".hadis-content").classList.add('loading');
-  document.querySelector(".hadis-content").innerHTML = 'جاري تحميل الأحاديث...';
-}
-
-function hideLoading() {
-  document.querySelector(".hadis-content").classList.remove('loading');
-}
-
 // Show loading initially
-showLoading();
+showLoading(document.querySelector(".hadis-content"), 'جاري تحميل الأحاديث...');
 
 fetch("https://hadis-api-id.vercel.app/hadith/abu-dawud?page=2&limit=300")
   .then((result) => {
-    let data = result.json();
-    return data;
+    if (!result.ok) {
+      throw new Error(`HTTP error! status: ${result.status}`);
+    }
+    return result.json();
   })
   .then((data) => {
     hideLoading();
-    document.querySelector(".hadis-content").innerHTML = data.items[index].arab;
-    numTwo.innerHTML = data.items.length;
+    
+    if (!data.items || data.items.length === 0) {
+      throw new Error('لا توجد أحاديث متاحة');
+    }
+    
+    const hadisData = data.items;
+    document.querySelector(".hadis-content").innerHTML = hadisData[index].arab;
+    numTwo.innerHTML = hadisData.length;
 
     next.addEventListener("click", () => {
-      document.querySelector(".hadis-content").innerHTML =
-        data.items[++index].arab;
-      numOne.innerHTML++;
-      if (index == data.items.length - 1) {
+      if (index < hadisData.length - 1) {
+        index++;
+        document.querySelector(".hadis-content").innerHTML = hadisData[index].arab;
+        numOne.innerHTML = index + 1;
+      }
+      
+      if (index === hadisData.length - 1) {
         next.classList.add("solid");
       }
       if (index > 0) {
-        prev.classList.remove("solid")
+        prev.classList.remove("solid");
       }
     });
+    
     prev.addEventListener("click", () => {
-      document.querySelector(".hadis-content").innerHTML =
-        data.items[--index].arab;
-      --numOne.innerHTML;
-      if (index < data.items.length - 1) {
+      if (index > 0) {
+        index--;
+        document.querySelector(".hadis-content").innerHTML = hadisData[index].arab;
+        numOne.innerHTML = index + 1;
+      }
+      
+      if (index < hadisData.length - 1) {
         next.classList.remove("solid");
       }
-      if (index == 0) {
-        prev.classList.add("solid")
+      if (index === 0) {
+        prev.classList.add("solid");
       }
     });
-  });
+  })
   .catch((error) => {
     console.error('Error loading hadis:', error);
-    document.querySelector(".hadis-content").innerHTML = 'حدث خطأ في تحميل الأحاديث';
+    showError(document.querySelector(".hadis-content"), 'حدث خطأ في تحميل الأحاديث. يرجى المحاولة مرة أخرى.');
   });
 
-
-window.onload = function() {
+window.addEventListener('load', function() {
   prev.classList.add("solid");
-}
+});
 
 // Add active class to current navigation item
 document.querySelectorAll('.nav a').forEach(link => {
@@ -115,3 +132,48 @@ document.querySelectorAll('.nav a').forEach(link => {
     link.classList.add('active');
   }
 });
+
+// Add keyboard navigation
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    if (e.key === 'ArrowRight') {
+      if (!next.classList.contains('solid')) {
+        next.click();
+      }
+    } else {
+      if (!prev.classList.contains('solid')) {
+        prev.click();
+      }
+    }
+  }
+});
+
+// Add touch gestures for mobile
+let startX = 0;
+let endX = 0;
+
+document.addEventListener('touchstart', function(e) {
+  startX = e.changedTouches[0].screenX;
+});
+
+document.addEventListener('touchend', function(e) {
+  endX = e.changedTouches[0].screenX;
+  handleGesture();
+});
+
+function handleGesture() {
+  const threshold = 50;
+  if (endX < startX - threshold) {
+    // Swipe left - next
+    if (!next.classList.contains('solid')) {
+      next.click();
+    }
+  }
+  if (endX > startX + threshold) {
+    // Swipe right - previous
+    if (!prev.classList.contains('solid')) {
+      prev.click();
+    }
+  }
+}
