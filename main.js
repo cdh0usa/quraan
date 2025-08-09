@@ -1,0 +1,207 @@
+let menu = document.querySelector(".menu");
+let close = document.querySelector(".close");
+let ul = document.querySelector(".header .container .nav ul");
+let upBtn = document.querySelector(".up");
+let input = document.querySelector("input");
+let search = document.querySelector(".search");
+let installBtn = document.getElementById('installBtn');
+let deferredPrompt;
+
+menu.addEventListener("click", () => {
+  ul.classList.add("active");
+});
+
+close.addEventListener("click", () => {
+  ul.classList.remove("active");
+});
+
+window.onscroll = function () {
+  if (scrollY >= 200) {
+    upBtn.classList.add("right");
+  } else {
+    upBtn.classList.remove("right");
+  }
+};
+
+upBtn.addEventListener("click", () => {
+  scrollTo({
+    top: 0,
+    behavior: "smooth",
+  });
+});
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('SW registered: ', registration);
+      })
+      .catch((registrationError) => {
+        console.log('SW registration failed: ', registrationError);
+      });
+  });
+}
+
+// PWA Install functionality
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.style.display = 'flex';
+  installBtn.classList.add('show');
+});
+
+installBtn.addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    deferredPrompt = null;
+    installBtn.style.display = 'none';
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  installBtn.style.display = 'none';
+  console.log('PWA was installed');
+});
+
+// Prayer time notifications
+function requestNotificationPermission() {
+  if ('Notification' in window && 'serviceWorker' in navigator) {
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        console.log('Notification permission granted');
+      }
+    });
+  }
+}
+
+// Request notification permission on page load
+window.addEventListener('load', () => {
+  setTimeout(requestNotificationPermission, 3000);
+});
+
+// Enhanced search functionality with loading state
+search.addEventListener("click", () => {
+  if (input.value === "") {
+    document.querySelector(".result").innerHTML = `
+      ادخل اسم المدينة
+    `;
+    document.querySelector(".namecity").innerHTML = "";
+    document.querySelector(".namecity").innerHTML = "";
+    document.querySelector(".fagr").innerHTML = "";
+    document.querySelector(".sunrise").innerHTML = "";
+    document.querySelector(".dohr").innerHTML = "";
+    document.querySelector(".asr").innerHTML = "";
+    document.querySelector(".maghreb").innerHTML = "";
+    document.querySelector(".isha").innerHTML = "";
+    setTimeout(() => {
+      document.querySelector(".result").innerHTML = ``;
+    }, 1500);
+  } else {
+    // Add loading state
+    document.querySelector(".result").innerHTML = `
+      <div class="loading">جاري البحث...</div>
+    `;
+    
+    document.querySelector(".namecity").innerHTML = input.value;
+    fetch(` https://api.aladhan.com/v1/timingsByAddress?address=${input.value}`)
+      .then((result) => {
+        let data = result.json();
+        return data;
+      })
+      .then((data) => {
+        document.querySelector(".result").innerHTML = ``;
+        
+        document.querySelector(".fagr").innerHTML = data.data.timings.Fajr;
+        document.querySelector(".sunrise").innerHTML =
+          data.data.timings.Sunrise;
+        document.querySelector(".dohr").innerHTML = data.data.timings.Dhuhr;
+        document.querySelector(".asr").innerHTML = data.data.timings.Asr;
+        document.querySelector(".maghreb").innerHTML =
+          data.data.timings.Maghrib;
+        document.querySelector(".isha").innerHTML = data.data.timings.Isha;
+        
+        // Schedule prayer notifications
+        schedulePrayerNotifications(data.data.timings);
+      })
+      .catch(() => {
+        document.querySelector(".result").innerHTML = `
+          المدينة غير موجودة حاول مرة أخري
+        `;
+        document.querySelector(".namecity").innerHTML = "";
+        document.querySelector(".fagr").innerHTML = "";
+        document.querySelector(".sunrise").innerHTML = "";
+        document.querySelector(".dohr").innerHTML = "";
+        document.querySelector(".asr").innerHTML = "";
+        document.querySelector(".maghreb").innerHTML = "";
+        document.querySelector(".isha").innerHTML = "";
+        setTimeout(() => {
+          document.querySelector(".result").innerHTML = ``;
+        }, 1500);
+      });
+    input.value = "";
+  }
+});
+
+// Schedule prayer notifications
+function schedulePrayerNotifications(timings) {
+  if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
+    const prayers = [
+      { name: 'الفجر', time: timings.Fajr },
+      { name: 'الظهر', time: timings.Dhuhr },
+      { name: 'العصر', time: timings.Asr },
+      { name: 'المغرب', time: timings.Maghrib },
+      { name: 'العشاء', time: timings.Isha }
+    ];
+    
+    prayers.forEach(prayer => {
+      const [hours, minutes] = prayer.time.split(':');
+      const prayerTime = new Date();
+      prayerTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+      
+      const now = new Date();
+      const timeUntilPrayer = prayerTime.getTime() - now.getTime();
+      
+      if (timeUntilPrayer > 0) {
+        setTimeout(() => {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.active.postMessage({
+              type: 'PRAYER_NOTIFICATION',
+              prayer: prayer.name
+            });
+          });
+        }, timeUntilPrayer);
+      }
+    });
+  }
+}
+
+document.onkeyup = function (e) {
+  if (e.key == "Enter") {
+    search.click();
+  }
+};
+
+// Add smooth scrolling for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function (e) {
+    e.preventDefault();
+    const target = document.querySelector(this.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }
+  });
+});
+
+// Add active class to current navigation item
+const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+document.querySelectorAll('.nav a').forEach(link => {
+  if (link.getAttribute('href') === currentPage) {
+    link.classList.add('active');
+  }
+});
